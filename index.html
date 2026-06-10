@@ -1,0 +1,1706 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Etiquetadora SKU</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    /* Unlock / Inventa brand palette */
+    --bg: #ECF5FE;
+    --surface: #ffffff;
+    --surface2: #EBEFF2;
+    --border: rgba(20,47,94,0.12);
+    --border-strong: rgba(20,47,94,0.25);
+    --text: #000020;
+    --text-2: #142F5E;
+    --text-3: #6b7a99;
+    --teal: #92E8F1;
+    --teal-bg: #E0FBFE;
+    --teal-text: #0a6b7a;
+    --blue: #3B4EC8;
+    --blue-bg: #ECF5FE;
+    --brand-navy: #000020;
+    --brand-blue: #142F5E;
+    --brand-cyan: #92E8F1;
+    --brand-mid: #3B4EC8;
+    --amber: #c47a1e;
+    --amber-bg: #FEF3E2;
+    --red: #A32D2D;
+    --red-bg: #FCEBEB;
+    --radius: 10px;
+    --radius-lg: 14px;
+  }
+
+  body {
+    font-family: 'Inter', 'IBM Plex Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    background: var(--brand-navy);
+    border-bottom: 2px solid var(--brand-cyan);
+    padding: 0 2rem;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  header .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  header .logo-icon {
+    width: 32px;
+    height: 32px;
+    background: var(--brand-mid);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  header .logo-icon svg { width: 18px; height: 18px; stroke: white; fill: none; }
+
+  header h1 {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: #ffffff;
+  }
+
+  header .subtitle {
+    font-size: 12px;
+    color: var(--brand-cyan);
+    font-family: 'IBM Plex Mono', monospace;
+    margin-left: 4px;
+  }
+
+  .status-bar {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--border-strong);
+  }
+  .dot.ok { background: var(--brand-cyan); }
+
+  .dot-label { font-size: 11px; color: rgba(255,255,255,0.6); font-family: 'IBM Plex Mono', monospace; }
+
+  main {
+    flex: 1;
+    max-width: 860px;
+    width: 100%;
+    margin: 2rem auto;
+    padding: 0 1.5rem 3rem;
+  }
+
+  /* Steps nav */
+  .steps {
+    display: flex;
+    gap: 0;
+    margin-bottom: 2rem;
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+
+  .step-btn {
+    flex: 1;
+    padding: 14px 12px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-family: 'Inter', 'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-3);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.15s;
+    border-right: 0.5px solid var(--border);
+    position: relative;
+  }
+  .step-btn:last-child { border-right: none; }
+  .step-btn:hover { background: var(--surface2); color: var(--text-2); }
+  .step-btn.active { background: var(--brand-navy); color: white; }
+  .step-btn.done { color: var(--brand-mid); }
+  .step-btn.done .step-num { background: var(--brand-mid); color: white; }
+
+  .step-num {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--border);
+    color: var(--text-3);
+    font-size: 11px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .step-btn.active .step-num { background: rgba(255,255,255,0.2); color: white; }
+  .step-check { display: none; font-size: 14px; }
+  .step-btn.done .step-check { display: inline; }
+  .step-btn.done .step-num { display: none; }
+
+  /* Panels */
+  .panel { display: none; animation: fadein 0.2s ease; }
+  .panel.active { display: block; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+  .card {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .card-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-3);
+    margin-bottom: 1rem;
+  }
+
+  .upload-zone {
+    border: 1.5px dashed var(--border-strong);
+    border-radius: var(--radius);
+    padding: 2.5rem 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: block;
+    background: var(--surface2);
+  }
+  .upload-zone:hover { border-color: var(--text); background: var(--bg); }
+  .upload-zone svg { width: 36px; height: 36px; stroke: var(--text-3); fill: none; margin-bottom: 10px; }
+  .upload-zone p { font-size: 14px; color: var(--text-2); font-weight: 500; }
+  .upload-zone small { font-size: 12px; color: var(--text-3); font-family: 'IBM Plex Mono', monospace; }
+  input[type=file] { display: none; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: var(--radius);
+    font-size: 12px;
+    font-weight: 500;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .badge-ok { background: var(--teal-bg); color: var(--brand-mid); }
+  .badge-warn { background: var(--amber-bg); color: var(--amber); }
+  .badge-err { background: var(--red-bg); color: var(--red); }
+  .badge-info { background: var(--blue-bg); color: var(--blue); }
+
+  .col-config {
+    margin-top: 1.25rem;
+    background: var(--surface2);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+  }
+  .col-config-title { font-size: 12px; color: var(--text-3); margin-bottom: 10px; font-family: 'IBM Plex Mono', monospace; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+
+  label.field-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-2);
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  select {
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: 'Inter', 'IBM Plex Sans', sans-serif;
+    border-radius: var(--radius);
+    border: 0.5px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b6b65' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 30px;
+  }
+  select:focus { outline: 2px solid var(--text); outline-offset: 1px; }
+
+  .preview-wrap { margin-top: 1rem; overflow-x: auto; }
+  table.preview {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  table.preview th {
+    text-align: left;
+    padding: 6px 10px;
+    background: var(--surface2);
+    color: var(--text-2);
+    font-weight: 500;
+    border-bottom: 0.5px solid var(--border);
+    white-space: nowrap;
+  }
+  table.preview td {
+    padding: 5px 10px;
+    border-bottom: 0.5px solid var(--border);
+    color: var(--text);
+    white-space: nowrap;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .preview-meta { font-size: 11px; color: var(--text-3); font-family: 'IBM Plex Mono', monospace; margin-top: 6px; }
+
+  .actions { display: flex; justify-content: flex-end; margin-top: 1.25rem; }
+
+  .btn-primary {
+    padding: 10px 24px;
+    background: var(--brand-navy);
+    color: white;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-weight: 500;
+    font-family: 'Inter', 'IBM Plex Sans', sans-serif;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-primary:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .btn-ghost {
+    padding: 8px 14px;
+    background: none;
+    color: var(--text-2);
+    border: 0.5px solid var(--border-strong);
+    border-radius: var(--radius);
+    font-size: 13px;
+    font-family: 'Inter', 'IBM Plex Sans', sans-serif;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-ghost:hover { background: var(--surface2); }
+
+  /* Bipagem */
+  .scan-area { position: relative; }
+  .scan-area svg.scan-icon {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 22px; height: 22px;
+    stroke: var(--text-3);
+    fill: none;
+  }
+
+  #barcode-input {
+    width: 100%;
+    padding: 14px 14px 14px 48px;
+    font-size: 18px;
+    font-family: 'IBM Plex Mono', monospace;
+    letter-spacing: 0.05em;
+    border: 1.5px solid var(--border-strong);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    transition: all 0.15s;
+  }
+  #barcode-input::placeholder { font-size: 14px; letter-spacing: 0; color: var(--text-3); }
+  #barcode-input:focus { outline: none; border-color: var(--text); }
+  #barcode-input.success { border-color: var(--teal); background: var(--teal-bg); }
+  #barcode-input.error { border-color: var(--red); background: var(--red-bg); }
+
+  .result-card {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    display: none;
+    margin-top: 1rem;
+  }
+  .result-card.show { display: block; }
+  .result-card.success { border-color: var(--teal); }
+
+  .result-header {
+    background: var(--surface2);
+    padding: 10px 1.25rem;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-3);
+  }
+  .result-body { padding: 1.25rem; }
+  .result-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 9px 0;
+    border-bottom: 0.5px solid var(--border);
+    font-size: 14px;
+  }
+  .result-row:last-of-type { border-bottom: none; }
+  .result-key { color: var(--text-2); font-size: 13px; }
+  .result-val { font-weight: 500; font-family: 'IBM Plex Mono', monospace; font-size: 13px; }
+  .result-sku-ext {
+    font-size: 26px;
+    font-weight: 600;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--brand-navy);
+    letter-spacing: 0.06em;
+    padding: 12px 0 4px;
+    text-align: center;
+    display: block;
+  }
+
+  .print-btn {
+    width: 100%;
+    padding: 13px;
+    margin-top: 1rem;
+    background: var(--brand-navy);
+    color: white;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 15px;
+    font-weight: 500;
+    font-family: 'Inter', 'IBM Plex Sans', sans-serif;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: opacity 0.15s;
+  }
+  .print-btn:hover { opacity: 0.85; }
+  .print-btn svg { width: 18px; height: 18px; stroke: white; fill: none; }
+
+  .error-box {
+    display: none;
+    padding: 12px 14px;
+    background: var(--red-bg);
+    border-radius: var(--radius);
+    color: var(--red);
+    font-size: 14px;
+    margin-top: 10px;
+    display: none;
+    align-items: center;
+    gap: 8px;
+  }
+  .error-box.show { display: flex; }
+  .error-box svg { width: 18px; height: 18px; stroke: var(--red); fill: none; flex-shrink: 0; }
+
+  /* History */
+  .history-list { display: flex; flex-direction: column; gap: 6px; }
+  .history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: var(--surface2);
+    border-radius: var(--radius);
+    border: 0.5px solid var(--border);
+  }
+  .history-ext { font-family: 'IBM Plex Mono', monospace; font-weight: 500; font-size: 15px; color: var(--blue); }
+  .history-sub { font-size: 11px; color: var(--text-3); font-family: 'IBM Plex Mono', monospace; margin-top: 2px; }
+  .history-right { display: flex; align-items: center; gap: 8px; }
+  .history-ts { font-size: 11px; color: var(--text-3); font-family: 'IBM Plex Mono', monospace; }
+
+  .col-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+
+  .empty-state { color: var(--text-3); font-size: 14px; text-align: center; padding: 2rem; font-family: 'IBM Plex Mono', monospace; }
+
+  /* Bloqueio de bipagem sem dados */
+  .lock-notice {
+    padding: 1.25rem;
+    background: var(--amber-bg);
+    border-radius: var(--radius);
+    color: var(--amber);
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 1rem;
+  }
+  .lock-notice svg { width: 18px; height: 18px; stroke: var(--amber); fill: none; flex-shrink: 0; }
+
+  /* ---- SCAN LAYOUT ---- */
+  .scan-layout { display: grid; grid-template-columns: 1fr 260px; gap: 1rem; align-items: start; }
+  .scan-main { display: flex; flex-direction: column; }
+
+  /* Progress bar */
+  .progress-bar-wrap { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1rem 1.25rem; margin-bottom: 1rem; }
+  .progress-stats { display: flex; align-items: center; gap: 10px; font-size: 13px; margin-bottom: 8px; }
+  .progress-stats strong { font-weight: 600; }
+  .prog-sep { color: var(--border-strong); }
+  .prog-pend { color: var(--amber); }
+  .prog-exc { color: var(--text-3); }
+  .prog-pct { margin-left: auto; font-size: 13px; font-weight: 600; font-family: 'IBM Plex Mono', monospace; color: var(--brand-mid); }
+  .prog-track { height: 6px; background: var(--surface2); border-radius: 99px; overflow: hidden; margin-bottom: 10px; }
+  .prog-fill { height: 100%; background: linear-gradient(90deg, var(--brand-mid), var(--brand-cyan)); border-radius: 99px; transition: width 0.4s ease; }
+  .prog-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pbadge { font-size: 11px; font-weight: 600; font-family: 'IBM Plex Mono', monospace; padding: 3px 9px; border-radius: 99px; display: flex; align-items: center; gap: 5px; }
+  .pbadge-green { background: var(--teal-bg); color: var(--brand-mid); }
+  .pbadge-orange { background: var(--amber-bg); color: var(--amber); }
+  .pbadge-gray { background: var(--surface2); color: var(--text-3); border: 0.5px solid var(--border); }
+  .pbadge-blue { background: var(--blue-bg); color: var(--blue); }
+
+  .scan-header-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; padding-bottom:10px; border-bottom:0.5px solid var(--border); }
+
+  /* Print type selector */
+  .print-type-selector { display:flex; gap:6px; }
+  .ptype { flex:1; display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:var(--radius); border:0.5px solid var(--border); cursor:pointer; transition:all 0.15s; }
+  .ptype:hover { border-color:var(--border-strong); background:var(--surface2); }
+  .ptype.active { border-color:var(--brand-navy); background:var(--blue-bg); }
+  .ptype-icon { width:32px; height:32px; border-radius:6px; background:var(--surface2); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .ptype.active .ptype-icon { background:var(--brand-navy); }
+  .ptype.active .ptype-icon svg { stroke:white; }
+  .ptype-name { font-size:13px; font-weight:600; color:var(--text); }
+  .ptype-sub { font-size:10px; color:var(--text-3); font-family:'IBM Plex Mono',monospace; }
+  .ptype.active .ptype-name { color:var(--brand-navy); }
+
+  /* Scan tabs override - remove old style as no longer needed */
+  .scan-tabs { display:none; }
+
+  /* Scan input row */
+  .scan-input-row { display: flex; gap: 8px; align-items: center; }
+
+  /* Scan table */
+  .scan-table-header { padding: 12px 16px; font-size: 13px; font-weight: 600; color: var(--text); border-bottom: 0.5px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .scan-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .scan-table th { padding: 9px 12px; background: var(--brand-navy); color: white; font-weight: 500; text-align: left; font-size: 12px; }
+  .scan-table th:first-child { width: 36px; text-align: center; }
+  .scan-table td { padding: 9px 12px; border-bottom: 0.5px solid var(--border); color: var(--text); vertical-align: middle; }
+  .scan-table tr:last-child td { border-bottom: none; }
+  .scan-table tr:hover td { background: var(--surface2); }
+  .scan-empty { text-align: center; padding: 3rem 1rem; color: var(--text-3); }
+  .scan-empty svg { display: block; margin: 0 auto 10px; stroke: var(--text-3); }
+  .scan-empty p { font-size: 13px; font-family: 'IBM Plex Mono', monospace; }
+  .sku-ext-cell { font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: #3B4EC8; font-size: 13px; }
+  .qty-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-family: 'IBM Plex Mono', monospace; }
+  .qty-track { width: 40px; height: 4px; background: var(--border); border-radius: 99px; overflow: hidden; }
+  .qty-fill { height: 100%; background: var(--teal); border-radius: 99px; }
+
+  /* Sidebar */
+  .scan-sidebar { position: sticky; top: 72px; }
+  .sidebar-section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-3); margin-bottom: 8px; }
+  .label-sizes { display: flex; flex-direction: column; gap: 6px; }
+  .lsize { padding: 9px 12px; border-radius: var(--radius); border: 0.5px solid var(--border); cursor: pointer; transition: all 0.15s; display: flex; justify-content: space-between; align-items: center; }
+  .lsize:hover { border-color: var(--border-strong); background: var(--surface2); }
+  .lsize.active { background: var(--brand-navy); border-color: var(--brand-navy); }
+  .lsize-name { font-size: 13px; font-weight: 500; color: var(--text); }
+  .lsize.active .lsize-name { color: white; }
+  .lsize-sub { font-size: 11px; color: var(--text-3); font-family: 'IBM Plex Mono', monospace; }
+  .lsize.active .lsize-sub { color: rgba(255,255,255,0.7); }
+  .text-sizes { display: flex; gap: 6px; }
+  .tsz { flex: 1; padding: 7px; font-size: 12px; font-weight: 500; font-family: 'Inter', 'IBM Plex Sans', sans-serif; border: 0.5px solid var(--border); border-radius: var(--radius); background: none; cursor: pointer; color: var(--text-2); transition: all 0.15s; }
+  .tsz.active { background: var(--brand-navy); border-color: var(--brand-navy); color: white; }
+  .tsz:hover:not(.active) { background: var(--surface2); }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); cursor: pointer; }
+  .checkbox-row input[type=checkbox] { accent-color: #3B4EC8; width: 14px; height: 14px; cursor: pointer; }
+
+  @media (max-width: 700px) {
+    .scan-layout { grid-template-columns: 1fr; }
+    .scan-sidebar { position: static; }
+  }
+
+  @media print {
+    body > * { display: none !important; }
+    #print-area { display: block !important; }
+  }
+  #print-area { display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24" stroke-width="1.8"><rect x="3" y="3" width="4" height="18" rx="1"/><rect x="9" y="3" width="2" height="18" rx="0.5"/><rect x="13" y="3" width="4" height="18" rx="1"/><rect x="19" y="3" width="2" height="18" rx="0.5"/></svg>
+    </div>
+    <div>
+      <h1>Etiquetadora SKU</h1>
+      <div style="font-size:10px; color:rgba(146,232,241,0.8); font-family:'IBM Plex Mono',monospace; letter-spacing:0.04em; margin-top:1px;">inventa &nbsp;unlock</div>
+    </div>
+  </div>
+  <div class="status-bar">
+    <div class="dot" id="dot-map"></div>
+    <span class="dot-label">mapeamento</span>
+    <div class="dot" id="dot-wms" style="margin-left:6px;"></div>
+    <span class="dot-label">wms</span>
+  </div>
+</header>
+
+<main>
+  <div class="steps">
+    <button class="step-btn active" data-tab="0">
+      <span class="step-check">✓</span><span class="step-num">1</span>
+      Mapeamento
+    </button>
+    <button class="step-btn" data-tab="1">
+      <span class="step-check">✓</span><span class="step-num">2</span>
+      WMS
+    </button>
+    <button class="step-btn" data-tab="2">
+      <span class="step-check">✓</span><span class="step-num">3</span>
+      Bipagem
+    </button>
+    <button class="step-btn" data-tab="3">
+      <span class="step-check">✓</span><span class="step-num">4</span>
+      Histórico
+    </button>
+  </div>
+
+  <!-- PANEL 1: Mapeamento -->
+  <div class="panel active" id="tab-0">
+    <div class="card">
+      <div class="card-title">Tabela de mapeamento — SKU Interno ↔ SKU Externo</div>
+      <label class="upload-zone" for="file-map" id="zone-map">
+        <svg viewBox="0 0 24 24" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        <p>Clique para selecionar o arquivo</p>
+        <small>CSV, XLS ou XLSX — SKU Interno + SKU Externo</small>
+      </label>
+      <input type="file" id="file-map" accept=".csv,.xlsx,.xls,.txt">
+      <div id="map-status" style="margin-top:10px;"></div>
+      <div id="map-col-config" style="display:none;">
+        <div class="col-config">
+          <div class="col-config-title">selecione as colunas corretas</div>
+          <div class="grid2">
+            <div>
+              <label class="field-label"><span class="col-dot" style="background:#1D9E75;"></span> SKU Interno</label>
+              <select id="map-col-interno" onchange="updateMapPreview()"></select>
+            </div>
+            <div>
+              <label class="field-label"><span class="col-dot" style="background:#185FA5;"></span> SKU Externo</label>
+              <select id="map-col-externo" onchange="updateMapPreview()"></select>
+            </div>
+          </div>
+          <div style="margin-top:10px;">
+            <label class="field-label"><span class="col-dot" style="background:#BA7517;"></span> Quantidade de Etiquetas</label>
+            <select id="map-col-qty" onchange="updateMapPreview()" style="width:100%;margin-top:4px;">
+              <option value="">— sem coluna de quantidade —</option>
+            </select>
+          </div>
+        </div>
+        <div id="map-preview-wrap"></div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn-primary" id="btn-next-0" disabled>
+        Próximo
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- PANEL 2: WMS -->
+  <div class="panel" id="tab-1">
+    <div class="card">
+      <div class="card-title">Tabela do WMS — SKU Interno + Código de Barras</div>
+      <label class="upload-zone" for="file-wms" id="zone-wms">
+        <svg viewBox="0 0 24 24" stroke-width="1.5"><rect x="3" y="3" width="4" height="18" rx="1"/><rect x="9" y="3" width="2" height="18"/><rect x="13" y="3" width="4" height="18" rx="1"/><rect x="19" y="3" width="2" height="18"/></svg>
+        <p>Clique para selecionar o arquivo do WMS</p>
+        <small>CSV, XLS ou XLSX — SKU Interno + Código de Barras</small>
+      </label>
+      <input type="file" id="file-wms" accept=".csv,.xlsx,.xls,.txt">
+      <div id="wms-status" style="margin-top:10px;"></div>
+      <div id="wms-col-config" style="display:none;">
+        <div class="col-config">
+          <div class="col-config-title">selecione as colunas corretas</div>
+          <div class="grid2">
+            <div>
+              <label class="field-label"><span class="col-dot" style="background:#1D9E75;"></span> SKU Interno</label>
+              <select id="wms-col-interno" onchange="updateWmsPreview()"></select>
+            </div>
+            <div>
+              <label class="field-label"><span class="col-dot" style="background:#BA7517;"></span> Código de Barras</label>
+              <select id="wms-col-barcode" onchange="updateWmsPreview()"></select>
+            </div>
+          </div>
+        </div>
+        <div id="wms-preview-wrap"></div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn-primary" id="btn-next-1" disabled>
+        Ir para Bipagem
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- PANEL 3: Bipagem -->
+  <div class="panel" id="tab-2">
+    <div id="lock-notice" class="lock-notice" style="display:none;">
+      <svg viewBox="0 0 24 24" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      Importe as tabelas nas etapas 1 e 2 antes de bipar.
+    </div>
+
+    <!-- Barra de progresso -->
+    <div class="progress-bar-wrap" id="progress-wrap">
+      <div class="progress-stats">
+        <span id="prog-geradas"><strong>0</strong> geradas</span>
+        <span class="prog-sep">|</span>
+        <span id="prog-pendentes" class="prog-pend">161 pendentes</span>
+        <span class="prog-sep">|</span>
+        <span id="prog-excesso" class="prog-exc">0 excesso</span>
+        <div class="prog-pct" id="prog-pct">0%</div>
+      </div>
+      <div class="prog-track"><div class="prog-fill" id="prog-fill" style="width:0%"></div></div>
+      <div class="prog-badges">
+        <span class="pbadge pbadge-green"><span id="pb-completos">0</span> COMPLETOS</span>
+        <span class="pbadge pbadge-orange"><span id="pb-parciais">0</span> PARCIAIS</span>
+        <span class="pbadge pbadge-gray"><span id="pb-pendentes">0</span> PENDENTES</span>
+        <span class="pbadge pbadge-blue"><span id="pb-produtos">0</span> PRODUTOS</span>
+      </div>
+    </div>
+
+    <!-- Layout principal: scanner + configurações -->
+    <div class="scan-layout">
+      <!-- Coluna esquerda -->
+      <div class="scan-main">
+
+        <!-- Input de scanner -->
+        <div class="card" style="padding: 1rem 1.25rem;">
+          <div class="scan-header-row">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3B4EC8" stroke-width="2"><rect x="3" y="3" width="4" height="18" rx="1"/><rect x="9" y="3" width="2" height="18"/><rect x="13" y="3" width="4" height="18" rx="1"/><rect x="19" y="3" width="2" height="18"/></svg>
+              <span style="font-size:13px; font-weight:600; color:var(--text);">Scanner</span>
+            </div>
+          </div>
+          <div class="scan-input-row">
+            <div class="scan-area" style="flex:1;">
+              <svg class="scan-icon" viewBox="0 0 24 24" stroke-width="1.8"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="7" y2="12.01"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="17" y1="12" x2="17" y2="12.01"/></svg>
+              <input type="text" id="barcode-input" placeholder="Escaneie o código de barras..." autocomplete="off" spellcheck="false">
+            </div>
+            <button class="btn-ghost" onclick="document.getElementById('barcode-input').value=''; document.getElementById('barcode-input').focus(); resetScanState();" title="Limpar campo">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              Limpar
+            </button>
+            <button class="btn-ghost" onclick="clearScanned()" title="Resetar lista">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+              Reset
+            </button>
+            <button class="btn-ghost" id="btn-autoimp" onclick="toggleAutoImpressao()" title="Auto impressão ao bipar">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+              <span id="autoimp-label">Auto: Off</span>
+            </button>
+          </div>
+          <div class="error-box" id="error-box">
+            <svg viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span id="error-msg">Código não encontrado.</span>
+          </div>
+        </div>
+
+        <!-- Tabela de escaneados -->
+        <div class="card" style="padding:0; overflow:hidden; margin-top: 1rem;">
+          <div class="scan-table-header">
+            <span>Produtos Etiquetados</span>
+            <button class="btn-ghost" style="font-size:12px;" onclick="exportHistory()">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Exportar CSV
+            </button>
+          </div>
+          <table class="scan-table">
+            <thead>
+              <tr>
+                <th style="width:36px;"><input type="checkbox" id="chk-all" onchange="toggleAllChecks(this.checked)"></th>
+                <th>SKU Interno</th>
+                <th>SKU Externo</th>
+                <th>Código de Barras</th>
+                <th>Qtd</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="scan-tbody">
+              <tr id="empty-row">
+                <td colspan="6" class="scan-empty">
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="3" y="3" width="4" height="18" rx="1"/><rect x="9" y="3" width="2" height="18"/><rect x="13" y="3" width="4" height="18" rx="1"/><rect x="19" y="3" width="2" height="18"/></svg>
+                  <p>Escaneie produtos para começar</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+
+      <!-- Coluna direita: configurações -->
+      <div class="scan-sidebar">
+        <div class="card" style="padding: 1.25rem;">
+          <div class="card-title">Configurações</div>
+
+          <div class="sidebar-section-title">Tamanho da Etiqueta</div>
+          <div class="label-sizes" id="label-sizes">
+            <div class="lsize active" data-w="40" data-h="25" data-cols="1" onclick="selectSize(this)">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:28px;height:17px;border:1.5px solid currentColor;border-radius:2px;flex-shrink:0;"></div>
+                <div>
+                  <span class="lsize-name">4 × 2,5 cm</span>
+                  <span class="lsize-sub">1 coluna</span>
+                </div>
+              </div>
+            </div>
+            <div class="lsize" data-w="40" data-h="25" data-cols="2" onclick="selectSize(this)">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="display:flex;gap:3px;flex-shrink:0;">
+                  <div style="width:13px;height:17px;border:1.5px solid currentColor;border-radius:2px;"></div>
+                  <div style="width:13px;height:17px;border:1.5px solid currentColor;border-radius:2px;"></div>
+                </div>
+                <div>
+                  <span class="lsize-name">4 × 2,5 cm</span>
+                  <span class="lsize-sub">2 colunas <span style="font-size:9px;color:var(--amber);">Zebra</span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="cols-note" style="display:none; margin-top:6px; padding:6px 10px; background:var(--blue-bg); border-radius:var(--radius); font-size:11px; color:var(--blue); font-family:'IBM Plex Mono',monospace; line-height:1.5;">
+            PDF sempre gera páginas de 40×25mm.<br>2 colunas afeta apenas o offset ZPL na bobina.
+          </div>
+
+          <div class="sidebar-section-title" style="margin-top:1.25rem;">Tamanho do Texto</div>
+          <div class="text-sizes" id="text-sizes">
+            <button class="tsz active" data-sz="normal" onclick="selectTextSize(this)">Normal</button>
+            <button class="tsz" data-sz="medio" onclick="selectTextSize(this)">Médio</button>
+            <button class="tsz" data-sz="grande" onclick="selectTextSize(this)">Grande</button>
+          </div>
+
+          <div style="margin-top:1.25rem;">
+            <label class="checkbox-row">
+              <input type="checkbox" id="chk-border" checked onchange="updateLabelPreview()">
+              <span>Exibir bordas nas etiquetas</span>
+            </label>
+            <label class="checkbox-row" style="margin-top:8px;">
+              <input type="checkbox" id="chk-barcode-vis" checked onchange="updateLabelPreview()">
+              <span>Exibir código de barras</span>
+            </label>
+            <label class="checkbox-row" style="margin-top:8px;">
+              <input type="checkbox" id="chk-interno-vis" onchange="updateLabelPreview()">
+              <span>Exibir SKU Interno</span>
+            </label>
+          </div>
+
+          <!-- Tipo de Impressão -->
+          <div class="sidebar-section-title" style="margin-top:1.25rem;">Tipo de Impressão</div>
+          <div class="print-type-selector" id="print-type-selector">
+            <div class="ptype active" data-type="pdf" onclick="selectPrintType(this)">
+              <div class="ptype-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
+              </div>
+              <div>
+                <div class="ptype-name">PDF</div>
+                <div class="ptype-sub">Impressora comum</div>
+              </div>
+            </div>
+            <div class="ptype" data-type="zpl" onclick="selectPrintType(this)">
+              <div class="ptype-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3H8M12 3v4"/><circle cx="12" cy="14" r="2"/></svg>
+              </div>
+              <div>
+                <div class="ptype-name">ZPL</div>
+                <div class="ptype-sub">Zebra / térmica</div>
+              </div>
+            </div>
+          </div>
+          <div id="zpl-notice" style="display:none; margin-top:8px;">
+            <!-- Status de conexão Browser Print -->
+            <div id="bp-status" style="padding:8px 10px; background:var(--amber-bg); border-radius:var(--radius); font-size:11px; color:var(--amber); font-family:'IBM Plex Mono',monospace; line-height:1.6;">
+              <strong>⚠ Zebra Browser Print não detectado</strong><br>
+              Instale o agente gratuito para envio USB direto:<br>
+              <a href="https://www.zebra.com/us/en/support-downloads/software/printer-software/browser-print.html" target="_blank" style="color:var(--blue);">↗ zebra.com/browserprint</a>
+            </div>
+            <div id="bp-printer-row" style="display:none; margin-top:6px;">
+              <label class="field-label">Impressora detectada</label>
+              <select id="bp-printer-select" style="width:100%; margin-top:4px;"></select>
+            </div>
+            <button class="btn-ghost" style="width:100%; margin-top:6px; font-size:12px; justify-content:center;" onclick="detectBrowserPrint()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+              Reconectar impressora
+            </button>
+          </div>
+
+          <button class="print-btn" style="margin-top:1rem;" onclick="printSelected()">
+            <svg viewBox="0 0 24 24" stroke-width="1.8"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            <span id="print-btn-label">Imprimir Selecionados (PDF)</span>
+          </button>
+
+          <!-- Preview da etiqueta -->
+          <div style="margin-top:1.25rem;">
+            <div class="sidebar-section-title">Preview da Etiqueta</div>
+            <div id="label-preview-box" style="border: 1px solid var(--border); border-radius: var(--radius); background: white; min-height: 80px; display:flex; align-items:center; justify-content:center; padding: 8px; overflow:hidden;">
+              <span style="font-size:11px; color:var(--text-3); font-family:'IBM Plex Mono',monospace;">bipe um produto para ver</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PANEL 4: Histórico -->
+  <div class="panel" id="tab-3">
+    <div class="card">
+      <div class="card-title">Histórico de bipagens</div>
+      <div id="history-container">
+        <p class="empty-state">— nenhuma bipagem ainda —</p>
+      </div>
+    </div>
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:0.5rem;">
+      <button class="btn-ghost" onclick="exportHistory()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Exportar CSV
+      </button>
+      <button class="btn-ghost" onclick="clearScanned()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+        Limpar
+      </button>
+    </div>
+  </div>
+</main>
+
+<div id="print-area"></div>
+
+<script>
+let mapData = null, wmsData = null;
+let barcodeToSku = {}, skuToExterno = {};
+let scanHistory = [];
+let debounceTimer;
+
+// --- TABS ---
+document.querySelectorAll('.step-btn').forEach(btn => {
+  btn.addEventListener('click', () => switchTab(+btn.dataset.tab));
+});
+
+function switchTab(idx) {
+  document.querySelectorAll('.step-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
+  document.querySelectorAll('.panel').forEach((p, i) => p.classList.toggle('active', i === idx));
+  if (idx === 2) setTimeout(() => document.getElementById('barcode-input').focus(), 100);
+  if (idx === 3) syncHistoryTab();
+}
+
+// --- FILE READING ---
+function readFile(file, cb) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (ext === 'csv' || ext === 'txt') {
+    Papa.parse(file, { header: true, skipEmptyLines: true, complete: r => cb(r.data, Object.keys(r.data[0] || {})) });
+  } else {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const wb = XLSX.read(e.target.result, { type: 'binary' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      cb(data, Object.keys(data[0] || {}));
+    };
+    reader.readAsBinaryString(file);
+  }
+}
+
+function renderSelect(sel, cols) {
+  sel.innerHTML = cols.map(c => `<option value="${c}">${c}</option>`).join('');
+}
+
+function normalize(s) {
+  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+}
+
+function autoDetect(cols, hints) {
+  for (const h of hints) {
+    const f = cols.find(c => normalize(c).includes(h));
+    if (f) return f;
+  }
+  return cols[0];
+}
+
+function renderPreview(wrap, data, cols, highlight, limit = 5) {
+  const rows = data.slice(0, limit);
+  const colors = { '#1D9E75': '#E1F5EE', '#185FA5': '#E6F1FB', '#BA7517': '#FAEEDA' };
+  wrap.innerHTML = `
+    <div class="preview-wrap" style="margin-top:1rem; overflow-x:auto;">
+      <table class="preview">
+        <thead><tr>${cols.map(c => {
+          const h = highlight && highlight[c];
+          const bg = h ? colors[h] || '#f0efe9' : '';
+          const style = h ? `style="background:${bg}; color:${h}; font-weight:600;"` : '';
+          const dot = h ? `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${h};margin-right:5px;vertical-align:middle;"></span>` : '';
+          return `<th ${style}>${dot}${c}</th>`;
+        }).join('')}</tr></thead>
+        <tbody>${rows.map(r => `<tr>${cols.map(c => {
+          const h = highlight && highlight[c];
+          const bg = h ? colors[h] || '' : '';
+          const style = h ? `style="background:${bg}; font-weight:500;"` : '';
+          return `<td ${style}>${r[c] || ''}</td>`;
+        }).join('')}</tr>`).join('')}</tbody>
+      </table>
+      <p class="preview-meta">${data.length} registros · mostrando ${Math.min(limit, data.length)}</p>
+    </div>`;
+}
+
+function updateMapPreview() {
+  if (!mapData) return;
+  const ci = document.getElementById('map-col-interno').value;
+  const ce = document.getElementById('map-col-externo').value;
+  const cq = document.getElementById('map-col-qty').value;
+  const allCols = Object.keys(mapData[0] || {});
+  const hl = { [ci]: '#1D9E75', [ce]: '#185FA5' };
+  if (cq) hl[cq] = '#BA7517';
+  renderPreview(document.getElementById('map-preview-wrap'), mapData, allCols, hl);
+}
+
+function updateWmsPreview() {
+  if (!wmsData) return;
+  const ci = document.getElementById('wms-col-interno').value;
+  const cb = document.getElementById('wms-col-barcode').value;
+  const allCols = Object.keys(wmsData[0] || {});
+  renderPreview(document.getElementById('wms-preview-wrap'), wmsData, allCols, { [ci]: '#1D9E75', [cb]: '#BA7517' });
+}
+
+// --- MAP FILE ---
+document.getElementById('file-map').addEventListener('change', function () {
+  const file = this.files[0]; if (!file) return;
+  readFile(file, (data, cols) => {
+    mapData = data;
+    document.getElementById('map-status').innerHTML = `<span class="badge badge-ok">✓ ${file.name} — ${data.length} registros</span>`;
+    document.getElementById('map-col-config').style.display = 'block';
+    const si = document.getElementById('map-col-interno');
+    const se = document.getElementById('map-col-externo');
+    const sq = document.getElementById('map-col-qty');
+    renderSelect(si, cols); renderSelect(se, cols);
+    // qty select: blank + all cols
+    sq.innerHTML = '<option value="">— sem coluna de quantidade —</option>' +
+      cols.map(c => `<option value="${c}">${c}</option>`).join('');
+    si.value = autoDetect(cols, ['interno', 'internal', 'skuint', 'sku', 'id', 'codigo', 'code']);
+    se.value = autoDetect(cols, ['externo', 'external', 'ext', 'skuext', 'destino', 'cliente', 'ref']);
+    // Auto-detect qty column
+    const qtyCol = autoDetect(cols, ['qtd', 'qty', 'quantidade', 'quant', 'amount', 'total', 'etiqueta']);
+    if (qtyCol && qtyCol !== cols[0]) sq.value = qtyCol;
+    updateMapPreview();
+    document.getElementById('btn-next-0').disabled = false;
+    document.getElementById('dot-map').classList.add('ok');
+  });
+});
+
+// --- WMS FILE ---
+document.getElementById('file-wms').addEventListener('change', function () {
+  const file = this.files[0]; if (!file) return;
+  readFile(file, (data, cols) => {
+    wmsData = data;
+    document.getElementById('wms-status').innerHTML = `<span class="badge badge-ok">✓ ${file.name} — ${data.length} registros</span>`;
+    document.getElementById('wms-col-config').style.display = 'block';
+    const si = document.getElementById('wms-col-interno');
+    const sb = document.getElementById('wms-col-barcode');
+    renderSelect(si, cols); renderSelect(sb, cols);
+    si.value = autoDetect(cols, ['códigodoproduto', 'codigodoproduto', 'produto', 'interno', 'internal', 'skuint', 'sku', 'id', 'codigo', 'code']);
+    sb.value = autoDetect(cols, ['barra', 'barcode', 'codbar', 'ean', 'gtin', 'bar', 'codigo']);
+    updateWmsPreview();
+    document.getElementById('btn-next-1').disabled = false;
+    document.getElementById('dot-wms').classList.add('ok');
+  });
+});
+
+// --- NEXT BUTTONS ---
+document.getElementById('btn-next-0').addEventListener('click', () => {
+  document.querySelector('[data-tab="0"]').classList.add('done');
+  switchTab(1);
+});
+
+document.getElementById('btn-next-1').addEventListener('click', () => {
+  buildLookup();
+  renderScanTable();
+  updateProgress();
+  document.querySelector('[data-tab="1"]').classList.add('done');
+  switchTab(2);
+});
+
+let productList = []; // master list: { code, interno, externo, needed, scanned, checked, ts }
+let barcodeIndex = {}; // barcode -> index in productList
+
+function buildLookup() {
+  const colInternMap = document.getElementById('map-col-interno').value;
+  const colExtern    = document.getElementById('map-col-externo').value;
+  const colQty       = document.getElementById('map-col-qty').value;
+  const colInternWms = document.getElementById('wms-col-interno').value;
+  const colBar       = document.getElementById('wms-col-barcode').value;
+
+  skuToExterno = {};
+  const skuNeeded = {};
+  mapData.forEach(r => {
+    const interno = String(r[colInternMap] || '').trim();
+    if (!interno) return;
+    skuToExterno[interno] = String(r[colExtern] || '').trim();
+    skuNeeded[interno]    = colQty ? (parseInt(r[colQty]) || 1) : 1;
+  });
+
+  barcodeToSku = {};
+  wmsData.forEach(r => {
+    const bar     = String(r[colBar] || '').trim();
+    const interno = String(r[colInternWms] || '').trim();
+    if (bar && interno) barcodeToSku[bar] = interno;
+  });
+
+  productList = [];
+  barcodeIndex = {};
+  wmsData.forEach(r => {
+    const bar     = String(r[colBar] || '').trim();
+    const interno = String(r[colInternWms] || '').trim();
+    if (!bar || !interno) return;
+    const externo = skuToExterno[interno];
+    if (!externo) return;
+    if (barcodeIndex[bar] !== undefined) return;
+    const needed = skuNeeded[interno] || 1;
+    const idx = productList.length;
+    productList.push({ code: bar, interno, externo, needed, scanned: 0, checked: true, ts: null });
+    barcodeIndex[bar] = idx;
+  });
+}
+
+// --- BARCODE INPUT ---
+const barcodeInput = document.getElementById('barcode-input');
+let autoImpressao = false;
+let labelConfig = { w: 40, h: 25, cols: 1, textSize: 'normal', border: true, showBarcode: true, showInterno: false };
+
+barcodeInput.addEventListener('input', function () {
+  clearTimeout(debounceTimer);
+  const val = this.value.trim();
+  if (!val) { resetScanState(); return; }
+  debounceTimer = setTimeout(() => processBarcode(val), 350);
+});
+
+barcodeInput.addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') { clearTimeout(debounceTimer); processBarcode(this.value.trim()); }
+});
+
+function processBarcode(code) {
+  if (!code) return;
+  resetScanState();
+
+  if (!productList.length) {
+    document.getElementById('lock-notice').style.display = 'flex';
+    return;
+  }
+  document.getElementById('lock-notice').style.display = 'none';
+
+  const idx = barcodeIndex[code];
+  if (idx === undefined) {
+    barcodeInput.classList.add('error');
+    showError(`Código <strong>${code}</strong> não encontrado.`);
+    return;
+  }
+
+  const item = productList[idx];
+  if (item.scanned >= item.needed) {
+    barcodeInput.classList.add('error');
+    showError(`<strong>${item.externo}</strong> — quantidade já completa (${item.needed}/${item.needed}).`);
+    return;
+  }
+
+  item.scanned += 1;
+  item.ts = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  barcodeInput.classList.add('success');
+
+  renderScanTable();
+  updateProgress();
+  updateLabelPreview();
+
+  if (autoImpressao) printLabel(idx);
+
+  setTimeout(() => {
+    barcodeInput.value = '';
+    resetScanState();
+    barcodeInput.focus();
+  }, 600);
+}
+
+function showError(msg) {
+  const b = document.getElementById('error-box');
+  document.getElementById('error-msg').innerHTML = msg;
+  b.classList.add('show');
+}
+
+function resetScanState() {
+  barcodeInput.classList.remove('success', 'error');
+  document.getElementById('error-box').classList.remove('show');
+}
+
+function toggleAutoImpressao() {
+  autoImpressao = !autoImpressao;
+  document.getElementById('autoimp-label').textContent = autoImpressao ? 'Auto: On' : 'Auto: Off';
+  document.getElementById('btn-autoimp').style.color = autoImpressao ? 'var(--brand-cyan)' : '';
+}
+
+// --- SCAN TABLE ---
+function renderScanTable() {
+  const tbody = document.getElementById('scan-tbody');
+  if (!productList.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="scan-empty">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="3" y="3" width="4" height="18" rx="1"/><rect x="9" y="3" width="2" height="18"/><rect x="13" y="3" width="4" height="18" rx="1"/><rect x="19" y="3" width="2" height="18"/></svg>
+      <p>Importe as tabelas e avance para a bipagem</p></td></tr>`;
+    return;
+  }
+
+  const sorted = [...productList].map((h, i) => ({ ...h, _origIdx: i }))
+    .sort((a, b) => {
+      const aDone = a.scanned >= a.needed, bDone = b.scanned >= b.needed;
+      if (aDone !== bDone) return aDone ? 1 : -1;
+      return 0;
+    });
+
+  tbody.innerHTML = sorted.map(h => {
+    const done     = h.scanned >= h.needed;
+    const pct      = Math.min(100, Math.round((h.scanned / h.needed) * 100));
+    const rowStyle = done ? 'background:#E8F0FD;' : h.scanned > 0 ? 'background:#FEF8EC;' : '';
+    const qtyColor = done ? 'var(--brand-mid)' : h.scanned > 0 ? 'var(--amber)' : 'var(--text-3)';
+    const barColor = done ? 'var(--brand-cyan)' : h.scanned > 0 ? 'var(--amber)' : 'var(--border-strong)';
+    const statusIcon = done
+      ? `<span style="color:var(--teal);font-size:14px;">✓</span>`
+      : h.scanned > 0
+        ? `<span style="color:var(--amber);font-size:13px;">◑</span>`
+        : `<span style="color:var(--text-3);font-size:13px;">○</span>`;
+    return `
+    <tr style="${rowStyle}">
+      <td style="text-align:center;"><input type="checkbox" ${h.checked ? 'checked' : ''} onchange="productList[${h._origIdx}].checked=this.checked"></td>
+      <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-2);">${h.interno}</td>
+      <td><span class="sku-ext-cell">${h.externo}</span></td>
+      <td style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-3);">${h.code}</td>
+      <td>
+        <div class="qty-badge">
+          <div class="qty-track"><div class="qty-fill" style="width:${pct}%;background:${barColor};"></div></div>
+          <span style="font-weight:600;color:${qtyColor};font-family:'IBM Plex Mono',monospace;font-size:12px;">${h.scanned}/${h.needed}</span>
+          ${statusIcon}
+        </div>
+      </td>
+      <td>
+        <div style="display:flex;gap:6px;">
+          <button class="btn-ghost" style="padding:4px 8px;font-size:12px;${!h.scanned?'opacity:0.4;':''}" onclick="printLabel(${h._origIdx})" ${!h.scanned?'disabled':''} title="Imprimir">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          </button>
+          <button class="btn-ghost" style="padding:4px 8px;font-size:12px;color:var(--amber);" onclick="resetItem(${h._origIdx})" title="Zerar bipagem">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+          </button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function resetItem(i) { productList[i].scanned = 0; productList[i].ts = null; renderScanTable(); updateProgress(); }
+function removeItem(i) {}
+function editQty(i) {
+  const nv = prompt('Quantidade necessária:', productList[i].needed);
+  if (nv !== null && !isNaN(+nv) && +nv > 0) { productList[i].needed = +nv; renderScanTable(); updateProgress(); }
+}
+function toggleAllChecks(val) { productList.forEach(h => h.checked = val); renderScanTable(); }
+
+function clearScanned() {
+  if (!confirm('Zerar todas as bipagens? Os produtos permanecem na lista.')) return;
+  productList.forEach(h => { h.scanned = 0; h.ts = null; });
+  renderScanTable();
+  updateProgress();
+}
+
+// --- PROGRESS ---
+function updateProgress() {
+  const totalNeeded  = productList.reduce((s, h) => s + h.needed, 0);
+  const totalScanned = productList.reduce((s, h) => s + h.scanned, 0);
+  const completos    = productList.filter(h => h.scanned >= h.needed).length;
+  const parciais     = productList.filter(h => h.scanned > 0 && h.scanned < h.needed).length;
+  const pendentes    = productList.filter(h => h.scanned === 0).length;
+  const pct          = totalNeeded > 0 ? Math.round((totalScanned / totalNeeded) * 100) : 0;
+  document.getElementById('prog-geradas').innerHTML = `<strong>${totalScanned}</strong> geradas`;
+  document.getElementById('prog-pendentes').textContent = `${totalNeeded - totalScanned} faltam`;
+  document.getElementById('prog-excesso').textContent = `0 excesso`;
+  document.getElementById('prog-pct').textContent = pct + '%';
+  document.getElementById('prog-fill').style.width = pct + '%';
+  document.getElementById('pb-completos').textContent = completos;
+  document.getElementById('pb-parciais').textContent = parciais;
+  document.getElementById('pb-pendentes').textContent = pendentes;
+  document.getElementById('pb-produtos').textContent = productList.length;
+}
+
+// --- LABEL PREVIEW ---
+function updateLabelPreview() {
+  const box = document.getElementById('label-preview-box');
+  if (!box) return;
+  const h = productList.find(p => p.scanned > 0) || productList[0];
+  if (!h) return;
+  const cfg = getconf(1);
+  // Always 40×25mm ratio. Scale to fit preview box (~220px wide)
+  const LW = 40, LH = 25;
+  const previewW = 218;
+  const scale = previewW / (LW * 3.78);
+  const previewH = Math.round(LH * 3.78 * scale);
+  const barW = (LW - 4) * 3.78 * scale;
+  const barH = Math.round(LH * 0.38 * 3.78 * scale);
+  const nameSz = cfg.textSize === 'grande' ? 6 : cfg.textSize === 'medio' ? 5.5 : 5;
+  const border = cfg.showBorder ? '1px solid #aaa' : '1px solid #e0e0e0';
+  const barcodeSVG = cfg.showBarcode ? buildBarcodeSVG(h.code, barW, barH) : '';
+
+  box.innerHTML = `
+    <div style="width:${previewW}px; height:${previewH}px; border:${border}; padding:${3*scale}px ${4*scale}px; box-sizing:border-box; font-family:Arial,sans-serif; display:flex; flex-direction:column; overflow:hidden; background:white;">
+      <div style="font-size:${nameSz*scale*3.2}px; font-weight:bold; text-transform:uppercase; line-height:1.2; margin-bottom:${1.5*scale}px; overflow:hidden; max-height:${LH*0.30*3.78*scale}px;">${h.externo}</div>
+      ${cfg.showBarcode ? `
+        <div style="flex:1; overflow:hidden; display:flex; align-items:center; justify-content:center; min-height:0;">${barcodeSVG}</div>
+        <div style="font-size:${4*scale*3}px; text-align:center; color:#333; margin:${0.5*scale}px 0;">${h.code}</div>` : ''}
+      ${cfg.showInterno ? `
+        <div style="border-top:0.3px solid #ccc; padding-top:${0.5*scale}px; font-size:${4*scale*3}px; display:flex; justify-content:space-between;">
+          <span style="color:#888;">SKU INT:</span><span style="font-weight:600;">${h.interno}</span>
+        </div>` : ''}
+    </div>`;
+}
+
+// --- LABEL CONFIG ---
+function selectSize(el) {
+  document.querySelectorAll('.lsize').forEach(e => e.classList.remove('active'));
+  el.classList.add('active');
+  labelConfig.w = +el.dataset.w;
+  labelConfig.h = +el.dataset.h;
+  labelConfig.cols = +el.dataset.cols;
+  const note = document.getElementById('cols-note');
+  if (note) note.style.display = labelConfig.cols > 1 ? 'block' : 'none';
+  updateLabelPreview();
+}
+
+function selectTextSize(el) {
+  document.querySelectorAll('.tsz').forEach(e => e.classList.remove('active'));
+  el.classList.add('active');
+  labelConfig.textSize = el.dataset.sz;
+  updateLabelPreview();
+}
+
+// --- BARCODE SVG GENERATOR (Code128-style visual) ---
+function buildBarcodeSVG(text, width, height) {
+  // Simple visual barcode using pattern encoding - alternating thick/thin bars
+  const chars = text.split('');
+  const seed = chars.reduce((a, c) => a + c.charCodeAt(0), 0);
+  const barCount = 60;
+  const barW = width / barCount;
+  let bars = '';
+  let x = 0;
+  // Generate deterministic bar pattern from text
+  const pattern = [];
+  let hash = seed;
+  for (let i = 0; i < barCount; i++) {
+    hash = (hash * 1664525 + 1013904223) & 0xffffffff;
+    pattern.push(Math.abs(hash) % 3); // 0=thin, 1=medium, 2=thick
+  }
+  // Always start and end with guard bars
+  pattern[0] = 2; pattern[1] = 0; pattern[2] = 2;
+  pattern[barCount-3] = 2; pattern[barCount-2] = 0; pattern[barCount-1] = 2;
+  
+  const totalUnits = pattern.reduce((a, v) => a + v + 1, 0);
+  const unitW = width / totalUnits;
+  let cx = 0;
+  pattern.forEach((v, i) => {
+    const bw = (v + 1) * unitW;
+    if (i % 2 === 0) { // even = black bar
+      bars += `<rect x="${cx.toFixed(2)}" y="0" width="${bw.toFixed(2)}" height="${height}" fill="#000"/>`;
+    }
+    cx += bw;
+  });
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${bars}</svg>`;
+}
+
+function buildLabelHTML(h, cfg) {
+  const { showBorder, showBarcode, showInterno } = cfg;
+  const LW_PX = 151; // 40mm at 96dpi
+  const LH_PX = 94;  // 25mm at 96dpi
+  const bcW = LW_PX - 11;
+  const bcH = Math.round(LH_PX * 0.38);
+  const barcodeSVG = showBarcode ? buildBarcodeSVG(h.code, bcW, bcH) : '';
+  const border = showBorder ? 'border: 1px solid #aaa;' : '';
+  return `<div class="lbl" style="${border}">
+      <div class="lbl-name">${h.externo}</div>
+      ${showBarcode ? `<div class="lbl-bc">${barcodeSVG}</div><div class="lbl-code">${h.code}</div>` : ''}
+      ${showInterno ? `<div class="lbl-footer"><div class="lbl-footer-row"><span class="lbl-footer-key">SKU INT:</span><span class="lbl-footer-val">${h.interno}</span></div></div>` : ''}
+    </div>`;
+}
+
+
+
+function getLabelStyle(cfg) {
+  const { textSize } = cfg;
+  // PDF: always 40mm × 25mm per page, 1 etiqueta por página
+  const nameSz = textSize === 'grande' ? '6pt' : textSize === 'medio' ? '5.5pt' : '5pt';
+  return `
+    @media print {
+      @page { size: 40mm 25mm; margin: 0mm; }
+      html, body { margin: 0; padding: 0; }
+      body * { visibility: hidden !important; }
+      #print-area { visibility: visible !important; position: static !important; margin: 0; padding: 0; }
+      #print-area * { visibility: visible !important; }
+      .lbl-wrap {
+        display: block !important;
+        width: 40mm;
+        height: 25mm;
+        overflow: hidden;
+        page-break-after: always;
+        break-after: page;
+      }
+      .lbl {
+        display: flex !important;
+        flex-direction: column;
+        width: 40mm;
+        height: 25mm;
+        padding: 1mm 1.5mm;
+        box-sizing: border-box;
+        overflow: hidden;
+        font-family: Arial, Helvetica, sans-serif;
+      }
+      .lbl-name {
+        font-size: ${nameSz};
+        font-weight: bold;
+        line-height: 1.2;
+        text-transform: uppercase;
+        margin-bottom: 0.5mm;
+        display: block !important;
+        max-height: 7.5mm;
+        overflow: hidden;
+      }
+      .lbl-bc {
+        display: block !important;
+        flex: 1;
+        text-align: center;
+        overflow: hidden;
+        min-height: 0;
+      }
+      .lbl-bc svg { display: block !important; width: 100%; height: 100%; }
+      .lbl-code {
+        font-size: 4pt;
+        text-align: center;
+        letter-spacing: 0.5px;
+        color: #333;
+        margin: 0.3mm 0;
+        display: block !important;
+      }
+      .lbl-footer { display: block !important; margin-top: 0.3mm; border-top: 0.3px solid #ccc; padding-top: 0.3mm; }
+      .lbl-footer-row { display: flex !important; justify-content: space-between; font-size: 4pt; line-height: 1.3; }
+      .lbl-footer-key { color: #888; }
+      .lbl-footer-val { font-weight: 600; color: #000; }
+    }
+  `;
+}
+
+// Each label is its own page — cols setting only matters for ZPL
+function buildPrintPages(labels) {
+  return labels.map(lbl => `<div class="lbl-wrap">${lbl}</div>`).join('');
+}
+
+// --- PRINT TYPE ---
+let printType = 'pdf';
+let bpPrinters = [];
+let bpSelectedPrinter = null;
+
+function selectPrintType(el) {
+  document.querySelectorAll('.ptype').forEach(e => e.classList.remove('active'));
+  el.classList.add('active');
+  printType = el.dataset.type;
+  document.getElementById('zpl-notice').style.display = printType === 'zpl' ? 'block' : 'none';
+  document.getElementById('print-btn-label').textContent =
+    printType === 'zpl' ? 'Enviar para Impressora Zebra' : 'Imprimir Selecionados (PDF)';
+  if (printType === 'zpl') detectBrowserPrint();
+}
+
+// --- ZEBRA BROWSER PRINT ---
+const BP_URL = 'http://127.0.0.1:9100';
+
+async function detectBrowserPrint() {
+  const statusEl = document.getElementById('bp-status');
+  const printerRow = document.getElementById('bp-printer-row');
+  statusEl.style.background = 'var(--amber-bg)';
+  statusEl.style.color = 'var(--amber)';
+  statusEl.innerHTML = '<strong>🔍 Procurando Browser Print...</strong>';
+  try {
+    const r = await fetch(`${BP_URL}/available`, { method: 'GET', mode: 'cors' });
+    const data = await r.json();
+    const printers = (data.printer || []);
+    bpPrinters = printers;
+    if (!printers.length) throw new Error('Nenhuma impressora encontrada');
+
+    bpSelectedPrinter = printers[0];
+    statusEl.style.background = 'var(--teal-bg)';
+    statusEl.style.color = 'var(--brand-mid)';
+    statusEl.innerHTML = `<strong>✓ Browser Print conectado</strong><br>${printers.length} impressora(s) disponível(is)`;
+    printerRow.style.display = 'block';
+    const sel = document.getElementById('bp-printer-select');
+    sel.innerHTML = printers.map((p, i) =>
+      `<option value="${i}">${p.name || p.uid || 'Impressora ' + (i+1)}</option>`).join('');
+    sel.onchange = () => { bpSelectedPrinter = bpPrinters[+sel.value]; };
+  } catch (e) {
+    statusEl.style.background = 'var(--red-bg)';
+    statusEl.style.color = 'var(--red)';
+    statusEl.innerHTML = `<strong>✗ Browser Print não encontrado</strong><br>
+      Instale o agente gratuito e deixe rodando em segundo plano:<br>
+      <a href="https://www.zebra.com/us/en/support-downloads/software/printer-software/browser-print.html"
+         target="_blank" style="color:var(--blue);">↗ zebra.com/browserprint</a>`;
+    printerRow.style.display = 'none';
+  }
+}
+
+async function sendZPLtoPrinter(zpl) {
+  if (!bpSelectedPrinter) {
+    alert('Nenhuma impressora Zebra conectada.\nClique em "Reconectar impressora" no painel de configurações.');
+    return false;
+  }
+  const uid = bpSelectedPrinter.uid;
+  try {
+    const r = await fetch(`${BP_URL}/write`, {
+      method: 'POST',
+      mode: 'cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device: { uid }, data: zpl })
+    });
+    if (!r.ok) throw new Error('Falha no envio');
+    return true;
+  } catch (e) {
+    alert('Erro ao enviar para a impressora:\n' + e.message +
+          '\n\nVerifique se o Zebra Browser Print está rodando.');
+    return false;
+  }
+}
+
+// --- ZPL GENERATOR ---
+function generateZPL(items, cfg) {
+  // Fixed: 40mm × 25mm @ 203 dpi (1mm = 8 dots)
+  const wDots = 320;  // 40mm
+  const hDots = 200;  // 25mm
+  const twoCol = cfg.cols === 2;
+  // For 2-col bobina: total width = 40+5+40 = 85mm = 680 dots
+  // Col 1 offset X = 0, Col 2 offset X = 360 (40mm + 5mm gap)
+  const totalPW = twoCol ? 680 : wDots;
+  const lines = [];
+
+  let colIdx = 0; // alternates 0,1 for 2-col mode
+
+  items.forEach(h => {
+    const qty = h.scanned || 1;
+    for (let q = 0; q < qty; q++) {
+      const xOffset = twoCol ? (colIdx === 0 ? 0 : 360) : 0;
+      lines.push('^XA');
+      lines.push(`^PW${totalPW}`);
+      lines.push(`^LL${hDots}`);
+      lines.push('^CI28');
+
+      if (cfg.showBorder) lines.push(`^FO${xOffset + 3},3^GB${wDots - 6},${hDots - 6},2^FS`);
+
+      const fontH = cfg.textSize === 'grande' ? 22 : cfg.textSize === 'medio' ? 18 : 15;
+      const fontW = Math.round(fontH * 0.65);
+      const ext = String(h.externo);
+      const charsPerLine = Math.floor((wDots - 20) / (fontW * 0.85));
+      const line1 = ext.slice(0, charsPerLine);
+      const line2 = ext.length > charsPerLine ? ext.slice(charsPerLine, charsPerLine * 2) : null;
+      lines.push(`^FO${xOffset + 8},6^A0N,${fontH},${fontW}^FD${line1}^FS`);
+      if (line2) lines.push(`^FO${xOffset + 8},${6 + fontH + 2}^A0N,${fontH},${fontW}^FD${line2}^FS`);
+
+      if (cfg.showBarcode) {
+        const textBottom = line2 ? (6 + fontH * 2 + 6) : (6 + fontH + 6);
+        const bcH = Math.max(hDots - textBottom - (cfg.showInterno ? 28 : 8), 30);
+        lines.push(`^FO${xOffset + 8},${textBottom}^BY1,2,${bcH}^BCN,,Y,N,N^FD${h.code}^FS`);
+      }
+
+      if (cfg.showInterno) {
+        lines.push(`^FO${xOffset + 8},${hDots - 22}^A0N,14,11^FDINT: ${h.interno}^FS`);
+      }
+
+      lines.push('^XZ');
+
+      if (twoCol) colIdx = (colIdx + 1) % 2;
+    }
+  });
+
+  return lines.join('\n');
+}
+
+// --- PRINT ---
+function getcfg(cols) {
+  return {
+    w: labelConfig.w, he: labelConfig.h, cols: cols || labelConfig.cols,
+    textSize: labelConfig.textSize,
+    showBorder: document.getElementById('chk-border').checked,
+    showBarcode: document.getElementById('chk-barcode-vis').checked,
+    showInterno: document.getElementById('chk-interno-vis').checked,
+    showSku: false
+  };
+}
+
+function doPrint(pagesHTML, cfg) {
+  const nameSz = cfg.textSize === 'grande' ? '6pt' : cfg.textSize === 'medio' ? '5.5pt' : '5pt';
+  const printCSS = `
+    @page { size: 40mm 25mm; margin: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: white; }
+    .lbl-wrap {
+      display: block;
+      width: 40mm;
+      height: 25mm;
+      page-break-after: always;
+      break-after: page;
+      overflow: hidden;
+    }
+    .lbl {
+      display: flex;
+      flex-direction: column;
+      width: 40mm;
+      height: 25mm;
+      padding: 1mm 1.5mm;
+      box-sizing: border-box;
+      overflow: hidden;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    .lbl-name {
+      font-size: ${nameSz};
+      font-weight: bold;
+      line-height: 1.2;
+      text-transform: uppercase;
+      margin-bottom: 0.5mm;
+      max-height: 7.5mm;
+      overflow: hidden;
+    }
+    .lbl-bc {
+      flex: 1;
+      text-align: center;
+      overflow: hidden;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .lbl-bc svg { display: block; width: 100%; height: 100%; }
+    .lbl-code {
+      font-size: 4pt;
+      text-align: center;
+      letter-spacing: 0.5px;
+      color: #333;
+      margin: 0.3mm 0;
+    }
+    .lbl-footer { margin-top: 0.3mm; border-top: 0.3px solid #ccc; padding-top: 0.3mm; }
+    .lbl-footer-row { display: flex; justify-content: space-between; font-size: 4pt; line-height: 1.3; }
+    .lbl-footer-key { color: #888; }
+    .lbl-footer-val { font-weight: 600; color: #000; }
+  `;
+
+  const win = window.open('', '_blank', 'width=400,height=300');
+  if (!win) { alert('Permita pop-ups para este site para abrir a janela de impressão.'); return; }
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Etiquetas</title><style>${printCSS}</style></head><body>${pagesHTML}</body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(() => { win.print(); win.close(); }, 250);
+}
+
+function printLabel(idx) {
+  const h = productList[idx];
+  if (!h || !h.scanned) return;
+  const cfg = getconf(1);
+  if (printType === 'zpl') {
+    sendZPLtoPrinter(generateZPL([h], cfg));
+  } else {
+    const labels = Array(h.scanned).fill(null).map(() => buildLabelHTML(h, cfg));
+    doPrint(buildPrintPages(labels), cfg);
+  }
+}
+
+function printSelected() {
+  const sel = productList.filter(h => h.checked && h.scanned > 0);
+  if (!sel.length) { alert('Selecione ao menos um item bipado para imprimir.'); return; }
+  const cfg = getconf(labelConfig.cols);
+
+  if (printType === 'zpl') {
+    sendZPLtoPrinter(generateZPL(sel, cfg));
+    return;
+  }
+
+  const labels = sel.flatMap(h =>
+    Array(h.scanned).fill(null).map(() => buildLabelHTML(h, cfg))
+  );
+  doPrint(buildPrintPages(labels), cfg);
+}
+
+function getconf(cols) {
+  return {
+    w: labelConfig.w, he: labelConfig.h, cols: cols || labelConfig.cols,
+    textSize: labelConfig.textSize,
+    showBorder: document.getElementById('chk-border').checked,
+    showBarcode: document.getElementById('chk-barcode-vis').checked,
+    showInterno: document.getElementById('chk-interno-vis').checked,
+    showSku: false
+  };
+}
+
+// --- HISTORY (tab 4) ---
+function renderHistory() { /* history is now scan table */ }
+
+function clearHistory() { clearScanned(); }
+
+function exportHistory() {
+  if (!productList.some(h => h.scanned > 0)) { alert('Nenhuma bipagem para exportar.'); return; }
+  const rows = [['SKU Externo', 'SKU Interno', 'Código de Barras', 'Bipados', 'Necessários', 'Horário'],
+    ...productList.filter(h=>h.scanned>0).map(h => [h.externo, h.interno, h.code, h.scanned, h.needed, h.ts])];
+  const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `etiquetas_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+// Sync history tab
+function syncHistoryTab() {
+  const c = document.getElementById('history-container');
+  const scanned = productList.filter(h => h.scanned > 0);
+  if (!scanned.length) {
+    c.innerHTML = '<p class="empty-state">— nenhuma bipagem ainda —</p>';
+    return;
+  }
+  c.innerHTML = `<div class="history-list">${scanned.map((h, i) => `
+    <div class="history-item">
+      <div>
+        <div class="history-ext">${h.externo}</div>
+        <div class="history-sub">${h.interno} · ${h.code} · ${h.scanned}/${h.needed}</div>
+      </div>
+      <div class="history-right">
+        <span class="history-ts">${h.ts}</span>
+        <button class="btn-ghost" onclick="printLabel(productList.indexOf(scanned[${i}]))" style="padding:5px 10px;font-size:12px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          Reimprimir
+        </button>
+      </div>
+    </div>`).join('')}</div>`;
+}
+
+// history tab sync is handled inside switchTab above
+</script>
+</body>
+</html>
