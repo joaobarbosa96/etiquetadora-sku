@@ -854,8 +854,10 @@
               Reconectar impressora
             </button>
             <div id="https-cert-tip" style="display:none; margin-top:6px; padding:7px 10px; background:var(--amber-bg); border-radius:var(--radius); font-size:11px; color:var(--amber); line-height:1.6;">
-              <strong>Primeira vez com HTTPS?</strong><br>
-              Acesse <a id="cert-link" href="https://127.0.0.1:9101" target="_blank" style="color:var(--blue); font-weight:600;">https://127.0.0.1:9101</a> e clique em <em>"Avançado → Continuar"</em> para aceitar o certificado, depois clique em Reconectar.
+              <strong>Passo obrigatório (HTTPS):</strong><br>
+              1. Acesse <a href="https://127.0.0.1:9101/ssl_support" target="_blank" style="color:var(--blue); font-weight:600;">https://127.0.0.1:9101/ssl_support</a><br>
+              2. Clique em <em>"Avançado" → "Continuar para 127.0.0.1"</em><br>
+              3. Volte aqui e clique em <strong>Reconectar impressora</strong>
             </div>
           </div>
 
@@ -1447,21 +1449,22 @@ const BP_BASE = location.protocol === 'https:' ? 'https://127.0.0.1:9101' : 'htt
 async function detectBrowserPrint() {
   const statusEl = document.getElementById('bp-status');
   const printerRow = document.getElementById('bp-printer-row');
+  const certTip = document.getElementById('https-cert-tip');
   statusEl.style.background = 'var(--amber-bg)';
   statusEl.style.color = 'var(--amber)';
   statusEl.innerHTML = '<strong>🔍 Procurando Browser Print...</strong>';
   try {
-    const r = await fetch(`${BP_BASE}/available`, { method: 'GET', mode: 'cors' });
+    const r = await fetch(`${BP_BASE}/available`, { method: 'GET' });
     const data = await r.json();
     const printers = (data.printer || []);
     bpPrinters = printers;
     if (!printers.length) throw new Error('Nenhuma impressora encontrada');
-
     bpSelectedPrinter = printers[0];
     statusEl.style.background = 'var(--teal-bg)';
     statusEl.style.color = 'var(--brand-mid)';
     statusEl.innerHTML = `<strong>✓ Browser Print conectado</strong><br>${printers.length} impressora(s) disponível(is)`;
     printerRow.style.display = 'block';
+    if (certTip) certTip.style.display = 'none';
     const sel = document.getElementById('bp-printer-select');
     sel.innerHTML = printers.map((p, i) =>
       `<option value="${i}">${p.name || p.uid || 'Impressora ' + (i+1)}</option>`).join('');
@@ -1469,35 +1472,32 @@ async function detectBrowserPrint() {
   } catch (e) {
     statusEl.style.background = 'var(--red-bg)';
     statusEl.style.color = 'var(--red)';
-    statusEl.innerHTML = `<strong>✗ Browser Print não encontrado</strong><br>
-      Instale o agente gratuito e deixe rodando em segundo plano:<br>
+    statusEl.innerHTML = `<strong>✗ Falha ao conectar</strong><br>
+      Verifique se o Zebra Browser Print está rodando.<br>
       <a href="https://www.zebra.com/us/en/support-downloads/software/printer-software/browser-print.html"
-         target="_blank" style="color:var(--blue);">↗ zebra.com/browserprint</a>`;
+         target="_blank" style="color:var(--blue);">↗ Download Browser Print</a>`;
     printerRow.style.display = 'none';
-    // Show HTTPS cert tip if on secure origin
-    const certTip = document.getElementById('https-cert-tip');
     if (certTip) certTip.style.display = location.protocol === 'https:' ? 'block' : 'none';
   }
 }
 
 async function sendZPLtoPrinter(zpl) {
   if (!bpSelectedPrinter) {
-    alert('Nenhuma impressora Zebra conectada.\nClique em "Reconectar impressora" no painel de configurações.');
+    alert('Nenhuma impressora Zebra conectada.\nClique em "Reconectar impressora" no painel.');
     return false;
   }
-  const uid = bpSelectedPrinter.uid;
   try {
+    // Browser Print write endpoint: POST /write com device uid e data ZPL
     const r = await fetch(`${BP_BASE}/write`, {
       method: 'POST',
-      mode: 'cors',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ device: { uid }, data: zpl })
+      body: JSON.stringify({ device: { uid: bpSelectedPrinter.uid }, data: zpl })
     });
-    if (!r.ok) throw new Error('Falha no envio');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return true;
   } catch (e) {
     alert('Erro ao enviar para a impressora:\n' + e.message +
-          '\n\nVerifique se o Zebra Browser Print está rodando.');
+          '\n\nVerifique se o Zebra Browser Print está rodando e a impressora está ligada.');
     return false;
   }
 }
