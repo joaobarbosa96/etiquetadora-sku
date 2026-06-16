@@ -1467,7 +1467,9 @@ async function detectBrowserPrint() {
   statusEl.style.color = 'var(--amber)';
   statusEl.innerHTML = '<strong>🔍 Procurando Browser Print...</strong>';
   try {
-    const r = await fetch(`${BP_BASE}/available`);
+    const r = await fetch(`${BP_BASE}/available`, {
+      headers: { 'Origin': window.location.origin }
+    });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     // Browser Print retorna { printer: [...] } ou { default: {...} }
@@ -1495,10 +1497,12 @@ async function sendZPLtoPrinter(zpl) {
     return false;
   }
   try {
-    // Endpoint correto: POST /default com ZPL puro no body
     const r = await fetch(`${BP_BASE}/default`, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      headers: {
+        'Content-Type': 'text/plain;charset=UTF-8',
+        'Origin': window.location.origin
+      },
       body: zpl
     });
     if (!r.ok) {
