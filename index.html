@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1444,40 +1445,47 @@ function selectPrintType(el) {
 // GitHub Pages (HTTPS) requer WSS/HTTPS. Browser Print expõe:
 //   HTTP  → http://127.0.0.1:9100  (funciona em HTTP)
 //   HTTPS → https://127.0.0.1:9101 (funciona em HTTPS, cert auto-assinado)
+// --- ZEBRA BROWSER PRINT (REST puro) ---
+// 9100 = HTTP  |  9101 = HTTPS (para páginas servidas em HTTPS como GitHub Pages)
 const BP_BASE = location.protocol === 'https:' ? 'https://127.0.0.1:9101' : 'http://127.0.0.1:9100';
 
+function showBPError(statusEl, printerRow, certTip, msg) {
+  statusEl.style.background = 'var(--red-bg)';
+  statusEl.style.color = 'var(--red)';
+  statusEl.innerHTML = `<strong>✗ Falha ao conectar</strong><br>${msg}<br>
+    <a href="https://www.zebra.com/us/en/support-downloads/software/printer-software/browser-print.html"
+       target="_blank" style="color:var(--blue);">↗ Download Browser Print</a>`;
+  printerRow.style.display = 'none';
+  if (certTip) certTip.style.display = location.protocol === 'https:' ? 'block' : 'none';
+}
+
 async function detectBrowserPrint() {
-  const statusEl = document.getElementById('bp-status');
+  const statusEl   = document.getElementById('bp-status');
   const printerRow = document.getElementById('bp-printer-row');
-  const certTip = document.getElementById('https-cert-tip');
+  const certTip    = document.getElementById('https-cert-tip');
   statusEl.style.background = 'var(--amber-bg)';
   statusEl.style.color = 'var(--amber)';
   statusEl.innerHTML = '<strong>🔍 Procurando Browser Print...</strong>';
   try {
-    const r = await fetch(`${BP_BASE}/available`, { method: 'GET' });
+    const r = await fetch(`${BP_BASE}/available`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
-    const printers = (data.printer || []);
-    bpPrinters = printers;
-    if (!printers.length) throw new Error('Nenhuma impressora encontrada');
-    bpSelectedPrinter = printers[0];
+    // Browser Print retorna { printer: [...] } ou { default: {...} }
+    const devices = data.printer || (data.default ? [data.default] : []);
+    if (!devices.length) throw new Error('Nenhuma impressora encontrada');
+    bpPrinters = devices;
+    bpSelectedPrinter = devices[0];
     statusEl.style.background = 'var(--teal-bg)';
     statusEl.style.color = 'var(--brand-mid)';
-    statusEl.innerHTML = `<strong>✓ Browser Print conectado</strong><br>${printers.length} impressora(s) disponível(is)`;
+    statusEl.innerHTML = `<strong>✓ Browser Print conectado</strong><br>${devices.length} impressora(s) disponível(is)`;
     printerRow.style.display = 'block';
     if (certTip) certTip.style.display = 'none';
     const sel = document.getElementById('bp-printer-select');
-    sel.innerHTML = printers.map((p, i) =>
+    sel.innerHTML = devices.map((p, i) =>
       `<option value="${i}">${p.name || p.uid || 'Impressora ' + (i+1)}</option>`).join('');
     sel.onchange = () => { bpSelectedPrinter = bpPrinters[+sel.value]; };
   } catch (e) {
-    statusEl.style.background = 'var(--red-bg)';
-    statusEl.style.color = 'var(--red)';
-    statusEl.innerHTML = `<strong>✗ Falha ao conectar</strong><br>
-      Verifique se o Zebra Browser Print está rodando.<br>
-      <a href="https://www.zebra.com/us/en/support-downloads/software/printer-software/browser-print.html"
-         target="_blank" style="color:var(--blue);">↗ Download Browser Print</a>`;
-    printerRow.style.display = 'none';
-    if (certTip) certTip.style.display = location.protocol === 'https:' ? 'block' : 'none';
+    showBPError(statusEl, printerRow, certTip, e.message);
   }
 }
 
@@ -1487,17 +1495,17 @@ async function sendZPLtoPrinter(zpl) {
     return false;
   }
   try {
-    // Browser Print write endpoint: POST /write com device uid e data ZPL
-    const r = await fetch(`${BP_BASE}/write`, {
+    // Browser Print aceita ZPL como texto puro no body — não JSON
+    const r = await fetch(`${BP_BASE}/write?uid=${encodeURIComponent(bpSelectedPrinter.uid)}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ device: { uid: bpSelectedPrinter.uid }, data: zpl })
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: zpl
     });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return true;
   } catch (e) {
-    alert('Erro ao enviar para a impressora:\n' + e.message +
-          '\n\nVerifique se o Zebra Browser Print está rodando e a impressora está ligada.');
+    alert('Erro ao enviar ZPL:\n' + e.message +
+          '\n\nVerifique se o Zebra Browser Print está rodando.');
     return false;
   }
 }
