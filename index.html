@@ -853,6 +853,10 @@
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
               Reconectar impressora
             </button>
+            <div id="https-cert-tip" style="display:none; margin-top:6px; padding:7px 10px; background:var(--amber-bg); border-radius:var(--radius); font-size:11px; color:var(--amber); line-height:1.6;">
+              <strong>Primeira vez com HTTPS?</strong><br>
+              Acesse <a id="cert-link" href="https://127.0.0.1:9101" target="_blank" style="color:var(--blue); font-weight:600;">https://127.0.0.1:9101</a> e clique em <em>"Avançado → Continuar"</em> para aceitar o certificado, depois clique em Reconectar.
+            </div>
           </div>
 
           <button class="print-btn" style="margin-top:1rem;" onclick="printSelected()">
@@ -1435,7 +1439,10 @@ function selectPrintType(el) {
 }
 
 // --- ZEBRA BROWSER PRINT ---
-const BP_URL = 'http://127.0.0.1:9100';
+// GitHub Pages (HTTPS) requer WSS/HTTPS. Browser Print expõe:
+//   HTTP  → http://127.0.0.1:9100  (funciona em HTTP)
+//   HTTPS → https://127.0.0.1:9101 (funciona em HTTPS, cert auto-assinado)
+const BP_BASE = location.protocol === 'https:' ? 'https://127.0.0.1:9101' : 'http://127.0.0.1:9100';
 
 async function detectBrowserPrint() {
   const statusEl = document.getElementById('bp-status');
@@ -1444,7 +1451,7 @@ async function detectBrowserPrint() {
   statusEl.style.color = 'var(--amber)';
   statusEl.innerHTML = '<strong>🔍 Procurando Browser Print...</strong>';
   try {
-    const r = await fetch(`${BP_URL}/available`, { method: 'GET', mode: 'cors' });
+    const r = await fetch(`${BP_BASE}/available`, { method: 'GET', mode: 'cors' });
     const data = await r.json();
     const printers = (data.printer || []);
     bpPrinters = printers;
@@ -1467,6 +1474,9 @@ async function detectBrowserPrint() {
       <a href="https://www.zebra.com/us/en/support-downloads/software/printer-software/browser-print.html"
          target="_blank" style="color:var(--blue);">↗ zebra.com/browserprint</a>`;
     printerRow.style.display = 'none';
+    // Show HTTPS cert tip if on secure origin
+    const certTip = document.getElementById('https-cert-tip');
+    if (certTip) certTip.style.display = location.protocol === 'https:' ? 'block' : 'none';
   }
 }
 
@@ -1477,7 +1487,7 @@ async function sendZPLtoPrinter(zpl) {
   }
   const uid = bpSelectedPrinter.uid;
   try {
-    const r = await fetch(`${BP_URL}/write`, {
+    const r = await fetch(`${BP_BASE}/write`, {
       method: 'POST',
       mode: 'cors',
       headers: { 'Content-Type': 'application/json' },
