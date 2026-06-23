@@ -1449,7 +1449,15 @@ function selectPrintType(el) {
 // 9100 = HTTP  |  9101 = HTTPS (para páginas servidas em HTTPS como GitHub Pages)
 // Browser Print: tenta 9101 (HTTPS) e 9100 (HTTP) automaticamente
 let BP_BASE = 'https://127.0.0.1:9101';
-const BP_ORIGINS = window.location.origin;
+const getOrigin = () => window.location.origin;
+
+async function tryPort(base) {
+  const r = await fetch(`${base}/available`, {
+    headers: { 'Origin': getOrigin() }
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
 
 function showBPError(statusEl, printerRow, certTip, msg) {
   statusEl.style.background = 'var(--red-bg)';
@@ -1460,14 +1468,6 @@ function showBPError(statusEl, printerRow, certTip, msg) {
        target="_blank" style="color:var(--blue);">↗ Download Browser Print</a>`;
   printerRow.style.display = 'none';
   if (certTip) certTip.style.display = 'block';
-}
-
-async function tryPort(base) {
-  const r = await fetch(`${base}/available`, {
-    headers: { 'Origin': BP_ORIGINS }
-  });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
 }
 
 async function detectBrowserPrint() {
@@ -1522,7 +1522,7 @@ async function sendZPLtoPrinter(zpl) {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain;charset=UTF-8',
-        'Origin': BP_ORIGINS
+        'Origin': getOrigin()
       },
       body: zpl
     });
