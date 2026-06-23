@@ -862,7 +862,7 @@
             </div>
           </div>
 
-          <button class="print-btn" style="margin-top:1rem;" onclick="printSelected()">
+          <button id="btn-print-sel" class="print-btn" style="margin-top:1rem;" onclick="printSelected()">
             <svg viewBox="0 0 24 24" stroke-width="1.8"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
             <span id="print-btn-label">Imprimir Selecionados (PDF)</span>
           </button>
@@ -1670,7 +1670,7 @@ function printLabel(idx) {
   if (!h || !h.scanned) return;
   const cfg = getconf(1);
   if (printType === 'zpl') {
-    sendZPLtoPrinter(generateZPL([h], cfg));
+    sendZPLSequential([h], cfg);
   } else {
     const labels = Array(h.scanned).fill(null).map(() => buildLabelHTML(h, cfg));
     doPrint(buildPrintPages(labels), cfg);
@@ -1683,7 +1683,7 @@ function printSelected() {
   const cfg = getconf(labelConfig.cols);
 
   if (printType === 'zpl') {
-    sendZPLtoPrinter(generateZPL(sel, cfg));
+    sendZPLSequential(sel, cfg);
     return;
   }
 
@@ -1692,6 +1692,32 @@ function printSelected() {
   );
   doPrint(buildPrintPages(labels), cfg);
 }
+
+// Envia etiquetas uma a uma com delay de 300ms entre cada
+async function sendZPLSequential(items, cfg) {
+  const btn = document.getElementById('btn-print-sel');
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Enviando...'; }
+
+  let total = 0;
+  let erros = 0;
+
+  for (const h of items) {
+    const qty = h.scanned || 1;
+    for (let i = 0; i < qty; i++) {
+      const zpl = generateZPL([{ ...h, scanned: 1 }], cfg);
+      const ok = await sendZPLtoPrinter(zpl);
+      if (ok) total++;
+      else { erros++; break; }
+      if (qty > 1 || items.length > 1) await delay(300);
+    }
+    if (erros) break;
+  }
+
+  if (btn) { btn.disabled = false; btn.innerHTML = '<svg viewBox="0 0 24 24" stroke-width="1.8"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Enviar para Impressora Zebra'; }
+  if (!erros) alert(`✓ ${total} etiqueta(s) enviada(s) com sucesso!`);
+}
+
+const delay = ms => new Promise(r => setTimeout(r, ms));
 
 function getconf(cols) {
   return {
