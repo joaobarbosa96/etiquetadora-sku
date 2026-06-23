@@ -1447,16 +1447,27 @@ function selectPrintType(el) {
 //   HTTPS → https://127.0.0.1:9101 (funciona em HTTPS, cert auto-assinado)
 // --- ZEBRA BROWSER PRINT (REST puro) ---
 // 9100 = HTTP  |  9101 = HTTPS (para páginas servidas em HTTPS como GitHub Pages)
-const BP_BASE = location.protocol === 'https:' ? 'https://127.0.0.1:9101' : 'http://127.0.0.1:9100';
+// Browser Print: tenta 9101 (HTTPS) e 9100 (HTTP) automaticamente
+let BP_BASE = 'https://127.0.0.1:9101';
+const BP_ORIGINS = window.location.origin;
 
 function showBPError(statusEl, printerRow, certTip, msg) {
   statusEl.style.background = 'var(--red-bg)';
   statusEl.style.color = 'var(--red)';
   statusEl.innerHTML = `<strong>✗ Falha ao conectar</strong><br>${msg}<br>
+    <a href="https://127.0.0.1:9101/ssl_support" target="_blank" style="color:var(--blue);">↗ Aceitar certificado HTTPS</a> &nbsp;|&nbsp;
     <a href="https://www.zebra.com/us/en/support-downloads/software/printer-software/browser-print.html"
        target="_blank" style="color:var(--blue);">↗ Download Browser Print</a>`;
   printerRow.style.display = 'none';
-  if (certTip) certTip.style.display = location.protocol === 'https:' ? 'block' : 'none';
+  if (certTip) certTip.style.display = 'block';
+}
+
+async function tryPort(base) {
+  const r = await fetch(`${base}/available`, {
+    headers: { 'Origin': BP_ORIGINS }
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
 }
 
 async function detectBrowserPrint() {
@@ -1466,29 +1477,39 @@ async function detectBrowserPrint() {
   statusEl.style.background = 'var(--amber-bg)';
   statusEl.style.color = 'var(--amber)';
   statusEl.innerHTML = '<strong>🔍 Procurando Browser Print...</strong>';
-  try {
-    const r = await fetch(`${BP_BASE}/available`, {
-      headers: { 'Origin': window.location.origin }
-    });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const data = await r.json();
-    // Browser Print retorna { printer: [...] } ou { default: {...} }
-    const devices = data.printer || (data.default ? [data.default] : []);
-    if (!devices.length) throw new Error('Nenhuma impressora encontrada');
-    bpPrinters = devices;
-    bpSelectedPrinter = devices[0];
-    statusEl.style.background = 'var(--teal-bg)';
-    statusEl.style.color = 'var(--brand-mid)';
-    statusEl.innerHTML = `<strong>✓ Browser Print conectado</strong><br>${devices.length} impressora(s) disponível(is)`;
-    printerRow.style.display = 'block';
-    if (certTip) certTip.style.display = 'none';
-    const sel = document.getElementById('bp-printer-select');
-    sel.innerHTML = devices.map((p, i) =>
-      `<option value="${i}">${p.name || p.uid || 'Impressora ' + (i+1)}</option>`).join('');
-    sel.onchange = () => { bpSelectedPrinter = bpPrinters[+sel.value]; };
-  } catch (e) {
-    showBPError(statusEl, printerRow, certTip, e.message);
+
+  let data = null;
+  for (const base of ['https://127.0.0.1:9101', 'http://127.0.0.1:9100']) {
+    try {
+      data = await tryPort(base);
+      BP_BASE = base;
+      break;
+    } catch(e) { /* tenta próxima porta */ }
   }
+
+  if (!data) {
+    showBPError(statusEl, printerRow, certTip, 'Browser Print não respondeu nas portas 9100 ou 9101.');
+    return;
+  }
+
+  const devices = data.printer || (data.default ? [data.default] : []);
+  if (!devices.length) {
+    showBPError(statusEl, printerRow, certTip, 'Nenhuma impressora encontrada.');
+    return;
+  }
+
+  bpPrinters = devices;
+  bpSelectedPrinter = devices[0];
+  const proto = BP_BASE.includes('9101') ? 'HTTPS' : 'HTTP';
+  statusEl.style.background = 'var(--teal-bg)';
+  statusEl.style.color = 'var(--brand-mid)';
+  statusEl.innerHTML = `<strong>✓ Browser Print conectado</strong> <span style="font-size:10px;opacity:0.6;">(${proto})</span><br>${devices.length} impressora(s) disponível(is)`;
+  printerRow.style.display = 'block';
+  if (certTip) certTip.style.display = 'none';
+  const sel = document.getElementById('bp-printer-select');
+  sel.innerHTML = devices.map((p, i) =>
+    `<option value="${i}">${p.name || p.uid || 'Impressora ' + (i+1)}</option>`).join('');
+  sel.onchange = () => { bpSelectedPrinter = bpPrinters[+sel.value]; };
 }
 
 async function sendZPLtoPrinter(zpl) {
@@ -1501,7 +1522,7 @@ async function sendZPLtoPrinter(zpl) {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain;charset=UTF-8',
-        'Origin': window.location.origin
+        'Origin': BP_ORIGINS
       },
       body: zpl
     });
